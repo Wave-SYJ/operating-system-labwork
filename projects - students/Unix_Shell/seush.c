@@ -136,22 +136,39 @@ char* trim(char* str) {
 }
 
 char* parse_redirect_dest(char* cmd_line, bool* format_error) {
-    char* redirect_dest = 0, * token = strsep(&cmd_line, ">");
-    *format_error = false;
-    while ((token = strsep(&cmd_line, ">")) != NULL) {
+    cmd_line = trim(cmd_line);
+    if (cmd_line && cmd_line[0] == '>') {
         *format_error = true;
-        if (*token != '\0')
-            redirect_dest = token;
+        return NULL;
     }
-    if (redirect_dest) {
+
+    char* divider = strchr(cmd_line, '>');
+    if (!divider) {
         *format_error = false;
-        for (char* ch = redirect_dest; *ch; ch++)
-            if (isspace(*ch)) {
-                *format_error = true;
-                break;
-            }
+        return NULL;
     }
-    return trim(redirect_dest);
+
+    *divider = 0;
+    if (strchr(divider + 1, '>')) {
+        *format_error = true;
+        return NULL;
+    }
+
+    char* redirect_dest = trim(divider + 1);
+    if (!redirect_dest || !redirect_dest[0]) {
+        *format_error = true;
+        return NULL;
+    }
+
+
+    for (char* ch = redirect_dest; *ch; ch++)
+        if (isspace(*ch)) {
+            *format_error = true;
+            return NULL;
+        }
+    
+    *format_error = false;
+    return redirect_dest;
 }
 
 void print_error() {
