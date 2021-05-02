@@ -107,14 +107,16 @@ typedef enum exec_result {
 
 exec_result exec_built_in_cmd(char* cmd_name, char** cmd_argv, int cmd_argc, link_t* path_link) {
     if (strcmp(cmd_name, "exit") == 0) {
+        if (cmd_argc > 1)
+            return ERROR;
         exit(0);
     } else if (strcmp(cmd_name, "cd") == 0) {
-        if (chdir(cmd_argv[0]) == -1)
+        if (chdir(cmd_argv[1]) == -1)
             return ERROR;
         return SUCCESS;
     } else if (strcmp(cmd_name, "path") == 0) {
         path_clear(path_link);
-        for (int i = 0; cmd_argv[i]; i++)
+        for (int i = 1; cmd_argv[i]; i++)
             path_add(path_link, cmd_argv[i]);
         return SUCCESS;
     }
@@ -133,11 +135,22 @@ char* trim(char* str) {
     return str;
 }
 
-char* parse_redirect_dest(char* cmd_line) {
+char* parse_redirect_dest(char* cmd_line, bool* format_error) {
     char* redirect_dest = 0, * token = strsep(&cmd_line, ">");
-    while ((token = strsep(&cmd_line, ">")) != NULL)
+    *format_error = false;
+    while ((token = strsep(&cmd_line, ">")) != NULL) {
+        *format_error = true;
         if (*token != '\0')
             redirect_dest = token;
+    }
+    if (redirect_dest) {
+        *format_error = false;
+        for (char* ch = redirect_dest; *ch; ch++)
+            if (isspace(*ch)) {
+                *format_error = true;
+                break;
+            }
+    }
     return trim(redirect_dest);
 }
 
@@ -147,17 +160,24 @@ void print_error() {
 }
 
 unsigned int exec_single_cmd(char* cmd_line, link_t* path_link) {
+    bool format_error;
+    char* redirect_dest = parse_redirect_dest(cmd_line, &format_error);
+    if (format_error) {
+        print_error();
+        return 0;
+    }
+
     char* cmd_name, ** cmd_argv;
     unsigned int cmd_argc;
-    char* redirect_dest = parse_redirect_dest(cmd_line);
     parse_cmd(cmd_line, &cmd_name, &cmd_argv, &cmd_argc);
-
     if (cmd_name == NULL)
         return 0;
 
     exec_result built_in_exec_result = exec_built_in_cmd(cmd_name, cmd_argv, cmd_argc, path_link); 
-    if (built_in_exec_result == ERROR)
+    if (built_in_exec_result == ERROR) {
         print_error();
+        return 0;
+    }
     else if (built_in_exec_result == SUCCESS)
         return 0;
     
@@ -187,7 +207,6 @@ unsigned int exec_single_cmd(char* cmd_line, link_t* path_link) {
         }
 
         if (searching || execv(cmd_path, cmd_argv) == -1) {
-            // dup2(fd_old, STDERR_FILENO);
             print_error();
             exit(0);          
         }
