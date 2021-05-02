@@ -122,8 +122,10 @@ exec_result exec_built_in_cmd(char* cmd_name, char** cmd_argv, int cmd_argc, lin
 }
 
 char* trim(char* str) {
+    if (str == NULL)
+        return str;
+
     while (isspace(*str)) str++;
-    
     int len = strlen(str);
     while (isspace(str[len - 1])) len--;
     str[len] = 0;
@@ -138,8 +140,12 @@ char* parse_redirect_dest(char* cmd_line) {
     return trim(redirect_dest);
 }
 
+void print_error() {
+    static const char* error_msg = "An error has occurred\n";
+    write(STDERR_FILENO, error_msg, strlen(error_msg));
+}
+
 unsigned int exec_single_cmd(char* cmd_line, link_t* path_link) {
-    const char* error_msg = "An error has occurred\n";
     char* cmd_name, ** cmd_argv;
     unsigned int cmd_argc;
     char* redirect_dest = parse_redirect_dest(cmd_line);
@@ -150,7 +156,7 @@ unsigned int exec_single_cmd(char* cmd_line, link_t* path_link) {
 
     exec_result built_in_exec_result = exec_built_in_cmd(cmd_name, cmd_argv, cmd_argc, path_link); 
     if (built_in_exec_result == ERROR)
-        write(STDERR_FILENO, error_msg, strlen(error_msg));
+        print_error();
     else if (built_in_exec_result == SUCCESS)
         return 0;
     
@@ -174,10 +180,11 @@ unsigned int exec_single_cmd(char* cmd_line, link_t* path_link) {
             current_node = current_node->next;
         }
 
-        freopen(redirect_dest, "w", stdout);
+        freopen(redirect_dest, "a", stdout);
+        freopen(redirect_dest, "a", stderr);
 
         if (searching || execv(cmd_path, cmd_argv) == -1) {
-            write(STDERR_FILENO, error_msg, strlen(error_msg));
+            print_error();
             exit(0);          
         }
     }
@@ -197,15 +204,30 @@ void exec_parallel_cmd(char* cmd_line, link_t* path_link) {
 }
 
 int main(int argc, char** argv) {
+    if (argc > 2) {
+        print_error();
+        exit(1);
+    }
+
+    FILE* file = stdin;
+    if (argc == 2) 
+        file = fopen(argv[1], "r");
+
     link_t path_link = link_init();
     path_add(&path_link, "/bin");
 
     while (true) {
         char* cmd_line = NULL;
         size_t cmd_line_length = 0;
+        if (argc == 1)
+            printf("seush> ");
 
-        printf("seush> ");
-        getline(&cmd_line, &cmd_line_length, stdin);
+        if(getline(&cmd_line, &cmd_line_length, file) == -1)
+            exit(0);
+        cmd_line_length = strlen(cmd_line);
+        if (isspace(cmd_line[cmd_line_length - 1]))
+            cmd_line[cmd_line_length - 1] = '\0';
+
         exec_parallel_cmd(cmd_line, &path_link);
         free(cmd_line);
     }
