@@ -97,50 +97,81 @@ void parse_cmd(char* cmd_line, char** cmd_name, char*** cmd_argv, unsigned int* 
     link_clear(&arg_link);
 }
 
-bool exec_built_in_cmd(char* cmd_name, char** cmd_argv, int cmd_argc, link_t* path_link) {
+typedef enum exec_result {
+    SUCCESS,
+    ERROR,
+    NOT_EXEC
+} exec_result;
+
+exec_result exec_built_in_cmd(char* cmd_name, char** cmd_argv, int cmd_argc, link_t* path_link) {
     if (strcmp(cmd_name, "exit") == 0) {
         exit(0);
     } else if (strcmp(cmd_name, "cd") == 0) {
-        chdir(cmd_argv[0]);
+        if (chdir(cmd_argv[0]) == -1)
+            return ERROR;
+        return SUCCESS;
     } else if (strcmp(cmd_name, "path") == 0) {
         path_clear(path_link);
         for (int i = 0; cmd_argv[i]; i++)
             path_add(path_link, cmd_argv[i]);
+        return SUCCESS;
     }
+
+    return NOT_EXEC;
 }
 
-void exec_cmd(char* cmd_line, size_t cmd_line_length, link_t* path_link) {
+unsigned int exec_cmd(char* cmd_line, link_t* path_link) {
+    const char* error_msg = "An error has occurred\n";
     char* cmd_name, ** cmd_argv;
     unsigned int cmd_argc;
     parse_cmd(cmd_line, &cmd_name, &cmd_argv, &cmd_argc);
 
     if (cmd_name == NULL)
-        return;
+        return 0;
 
-    if (!exec_built_in_cmd(cmd_name, cmd_argv, cmd_argc, path_link)) {
-        pid_t child_pid = fork();
-        if (child_pid) {
-            wait(NULL);
-        } else {
-            link_node* current_node = path_link->head;
-            char* cmd_path = cmd_name;
-            while (execv(cmd_path, cmd_argv) == -1 && errno == ENOENT && current_node) {
-                size_t real_path_size = sizeof(char) *  (strlen(current_node->value) + 1 + strlen(cmd_line) + 1);
-                char* real_path = malloc(real_path_size); 
-                memset(real_path, 0, real_path_size);
+    exec_result built_in_exec_result = exec_built_in_cmd(cmd_name, cmd_argv, cmd_argc, path_link); 
+    if (built_in_exec_result == ERROR)
+        write(STDERR_FILENO, error_msg, strlen(error_msg));
+    else if (built_in_exec_result == SUCCESS)
+        return 0;
+    
+    pid_t child_pid = fork();
+    if (child_pid)
+        return 1;
+    else {
+        link_node* current_node = path_link->head;
+        char* cmd_path = cmd_name;
+        bool searching = true;
+        while ((searching = access(cmd_path, X_OK)) != 0 && current_node) {
+            size_t real_path_size = sizeof(char) *  (strlen(current_node->value) + 1 + strlen(cmd_line) + 1);
+            char* real_path = malloc(real_path_size); 
+            memset(real_path, 0, real_path_size);
 
-                strcat(real_path, current_node->value);
-                strcat(real_path, "/");
-                strcat(real_path, cmd_name);
+            strcat(real_path, current_node->value);
+            strcat(real_path, "/");
+            strcat(real_path, cmd_name);
 
-                cmd_path = real_path;
-                current_node = current_node->next;
-            }
-            exit(0);
+            cmd_path = real_path;
+            current_node = current_node->next;
+        }
+
+        if (searching || execv(cmd_path, cmd_argv) == -1) {
+            write(STDERR_FILENO, error_msg, strlen(error_msg));
+            exit(0);          
         }
     }
+}
 
-    free(cmd_argv);
+void exec_parallel_cmd(char* cmd_line, link_t* path_link) {
+    char* token = '\0';
+    unsigned int process_count = 0;
+
+    while ((token = strsep(&cmd_line, "&")) != NULL)
+        if (*token != '\0')
+            process_count += exec_cmd(token, path_link);
+
+    for (unsigned int i = 0; i < process_count; i++)
+        wait(NULL);
 }
 
 int main(char** argv, int argc) {
@@ -153,7 +184,7 @@ int main(char** argv, int argc) {
 
         printf("seush> ");
         getline(&cmd_line, &cmd_line_length, stdin);
-        exec_cmd(cmd_line, cmd_line_length, &path_link);
+        exec_parallel_cmd(cmd_line, &path_link);
         free(cmd_line);
     }
 
