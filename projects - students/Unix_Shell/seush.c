@@ -4,6 +4,7 @@
 #include <string.h>
 #include <stdbool.h>
 #include <errno.h>
+#include <ctype.h>
 
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -120,10 +121,28 @@ exec_result exec_built_in_cmd(char* cmd_name, char** cmd_argv, int cmd_argc, lin
     return NOT_EXEC;
 }
 
-unsigned int exec_cmd(char* cmd_line, link_t* path_link) {
+char* trim(char* str) {
+    while (isspace(*str)) str++;
+    
+    int len = strlen(str);
+    while (isspace(str[len - 1])) len--;
+    str[len] = 0;
+    return str;
+}
+
+char* parse_redirect_dest(char* cmd_line) {
+    char* redirect_dest = 0, * token = strsep(&cmd_line, ">");
+    while ((token = strsep(&cmd_line, ">")) != NULL)
+        if (*token != '\0')
+            redirect_dest = token;
+    return trim(redirect_dest);
+}
+
+unsigned int exec_single_cmd(char* cmd_line, link_t* path_link) {
     const char* error_msg = "An error has occurred\n";
     char* cmd_name, ** cmd_argv;
     unsigned int cmd_argc;
+    char* redirect_dest = parse_redirect_dest(cmd_line);
     parse_cmd(cmd_line, &cmd_name, &cmd_argv, &cmd_argc);
 
     if (cmd_name == NULL)
@@ -155,11 +174,14 @@ unsigned int exec_cmd(char* cmd_line, link_t* path_link) {
             current_node = current_node->next;
         }
 
+        freopen(redirect_dest, "w", stdout);
+
         if (searching || execv(cmd_path, cmd_argv) == -1) {
             write(STDERR_FILENO, error_msg, strlen(error_msg));
             exit(0);          
         }
     }
+    return 0;
 }
 
 void exec_parallel_cmd(char* cmd_line, link_t* path_link) {
@@ -168,13 +190,13 @@ void exec_parallel_cmd(char* cmd_line, link_t* path_link) {
 
     while ((token = strsep(&cmd_line, "&")) != NULL)
         if (*token != '\0')
-            process_count += exec_cmd(token, path_link);
+            process_count += exec_single_cmd(token, path_link);
 
     for (unsigned int i = 0; i < process_count; i++)
         wait(NULL);
 }
 
-int main(char** argv, int argc) {
+int main(int argc, char** argv) {
     link_t path_link = link_init();
     path_add(&path_link, "/bin");
 
