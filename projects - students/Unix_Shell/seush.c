@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include <errno.h>
 #include <ctype.h>
+#include <fcntl.h>
 
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -180,10 +181,13 @@ unsigned int exec_single_cmd(char* cmd_line, link_t* path_link) {
             current_node = current_node->next;
         }
 
-        freopen(redirect_dest, "a", stdout);
-        freopen(redirect_dest, "a", stderr);
+        if (redirect_dest) {
+            freopen(redirect_dest, "w", stdout);
+            freopen(redirect_dest, "w", stderr);
+        }
 
         if (searching || execv(cmd_path, cmd_argv) == -1) {
+            // dup2(fd_old, STDERR_FILENO);
             print_error();
             exit(0);          
         }
@@ -210,8 +214,10 @@ int main(int argc, char** argv) {
     }
 
     FILE* file = stdin;
-    if (argc == 2) 
-        file = fopen(argv[1], "r");
+    if (argc == 2 && (file = freopen(argv[1], "r", stdin)) == NULL)  {
+        print_error();
+        exit(1);
+    }
 
     link_t path_link = link_init();
     path_add(&path_link, "/bin");
@@ -222,7 +228,7 @@ int main(int argc, char** argv) {
         if (argc == 1)
             printf("seush> ");
 
-        if(getline(&cmd_line, &cmd_line_length, file) == -1)
+        if(getline(&cmd_line, &cmd_line_length, stdin) == -1)
             exit(0);
         cmd_line_length = strlen(cmd_line);
         if (isspace(cmd_line[cmd_line_length - 1]))
