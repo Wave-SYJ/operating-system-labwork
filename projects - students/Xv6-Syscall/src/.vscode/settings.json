@@ -1,0 +1,10 @@
+{
+  "files.associations": {
+    "*.jsx": "javascriptreact",
+    "*.tsx": "typescriptreact",
+    "user.h": "c",
+    "proc.h": "c",
+    "stat.h": "c",
+    "types.h": "c"
+  }
+}
