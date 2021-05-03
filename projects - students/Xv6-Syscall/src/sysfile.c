@@ -67,11 +67,20 @@ sys_dup(void)
 }
 
 int read_count = 0;
+struct spinlock read_count_lock;
+
+void
+readcountinit(void)
+{
+  initlock(&read_count_lock, "read_count_lock");
+}
 
 int
 sys_read(void)
 {
+  acquire(&read_count_lock);
   read_count++;
+  release(&read_count_lock);
 
   struct file *f;
   int n;
