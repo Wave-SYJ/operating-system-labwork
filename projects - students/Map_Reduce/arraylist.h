@@ -7,6 +7,7 @@
 typedef struct array_list {
     void** array;
     size_t length, __volume;
+    size_t iter_pos;
 } array_list;
 
 array_list init_list();

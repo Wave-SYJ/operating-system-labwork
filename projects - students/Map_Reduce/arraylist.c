@@ -1,12 +1,13 @@
 #include "arraylist.h"
 
-const int init_volume = 8;
+const int default_volume = 8;
 
 array_list init_list(size_t item_size) {
     array_list list;
     list.length = 0;
-    list.__volume = init_volume;
-    list.array = malloc(init_volume * sizeof(void*));
+    list.iter_pos = 0;
+    list.__volume = default_volume;
+    list.array = malloc(default_volume * sizeof(void*));
     return list;
 }
 
@@ -19,7 +20,7 @@ void __ensure_volume(array_list* list, size_t required_volume) {
         target *= 2;
 
     void** new_array = malloc(target * sizeof(void*));
-    memcpy(new_array, list->array, list->length * list->__volume);
+    memcpy(new_array, list->array, list->__volume * sizeof(void*));
     free(list->array);
 
     list->array = new_array;
@@ -37,4 +38,5 @@ void destroy_list(array_list* list) {
         free(list->array);
     list->length = 0;
     list->array = NULL;
+    list->iter_pos = 0;
 }
